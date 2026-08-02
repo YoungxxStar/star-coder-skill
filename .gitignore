@@ -1,0 +1,21 @@
+# Local deployment state and secrets
+.env
+.env.*
+*.log
+*.pid
+*.key
+*.pem
+*.p12
+*.pfx
+config.yaml
+password
+var/
+
+# Generated packages and editor/OS state
+*.tar.gz
+*.tgz
+*.zip
+__pycache__/
+.DS_Store
+*.swp
+*~

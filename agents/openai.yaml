@@ -1,0 +1,4 @@
+interface:
+  display_name: "Star Coder Deploy"
+  short_description: "Deploy and manage code-server across Linux and HPC"
+  default_prompt: "Use $star-coder-skill to interactively configure and deploy code-server on this Linux environment."
