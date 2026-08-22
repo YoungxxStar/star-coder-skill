@@ -11,6 +11,7 @@ INSTALL_SOURCE="auto"
 ARCHIVE=""
 BIND_ADDRESS="127.0.0.1"
 PORT="auto"
+EXTERNAL_URL=""
 PASSWORD_MODE="preserve-or-generate"
 AUTOSTART="manual"
 UPGRADE=0
@@ -36,6 +37,7 @@ Required deployment choices (defaults are safe for a local user install):
   --archive FILE          Offline .tar.gz/.tar.xz archive; implies archive source
   --bind ADDRESS          Bind address (default: 127.0.0.1)
   --port PORT             Numeric port or auto (default: auto)
+  --external-url URL      Browser-facing HTTPS or localhost URL
   --password-mode MODE    preserve-or-generate|generate|prompt
   --autostart MODE        auto|manual|systemd-user|cron|slurm|container
 
@@ -44,7 +46,7 @@ Behavior:
   --no-start              Configure but do not start now
   --create-workspace      Create the workspace if it does not exist
   --dry-run               Validate and print the resolved plan without changes
-  --allow-public-http     Acknowledge non-loopback plain-HTTP exposure risk
+  --allow-public-http     Explicitly allow insecure remote HTTP (not recommended)
   -h, --help              Show this help
 
 Password handling:
@@ -97,6 +99,23 @@ canonicalize() {
   else
     printf '%s\n' "$path"
   fi
+}
+
+validate_external_url() {
+  [[ -n "$EXTERNAL_URL" ]] || return 0
+  [[ "$EXTERNAL_URL" != *$'\n'* && "$EXTERNAL_URL" != *$'\r'* && "$EXTERNAL_URL" != *' '* ]] || \
+    die "external URL must not contain whitespace"
+  case "$EXTERNAL_URL" in
+    https://?*) ;;
+    http://localhost|http://localhost:*|http://localhost/*|http://127.*|http://\[::1\]|http://\[::1\]:*) ;;
+    http://?*)
+      if [[ "$ALLOW_PUBLIC_HTTP" -eq 0 ]]; then
+        die "remote browser access over HTTP is unsupported; use a trusted HTTPS endpoint"
+      fi
+      warn "remote HTTP disables secure browser APIs, including code-server webviews and service workers"
+      ;;
+    *) die "external URL must start with https://, or use http://localhost for a local tunnel" ;;
+  esac
 }
 
 shell_quote() {
@@ -387,6 +406,7 @@ write_environment() {
     printf 'BIND_ADDRESS=%s\n' "$(shell_quote "$BIND_ADDRESS")"
     printf 'HEALTH_HOST=%s\n' "$(shell_quote "$health_host")"
     printf 'PORT=%s\n' "$(shell_quote "$PORT")"
+    printf 'EXTERNAL_URL=%s\n' "$(shell_quote "$EXTERNAL_URL")"
   } > "$env_file"
   chmod 600 "$env_file"
 }
@@ -650,6 +670,7 @@ while [[ $# -gt 0 ]]; do
     --archive) [[ $# -ge 2 ]] || die "$1 requires a value"; ARCHIVE="$2"; shift 2 ;;
     --bind) [[ $# -ge 2 ]] || die "$1 requires a value"; BIND_ADDRESS="$2"; shift 2 ;;
     --port) [[ $# -ge 2 ]] || die "$1 requires a value"; PORT="$2"; shift 2 ;;
+    --external-url) [[ $# -ge 2 ]] || die "$1 requires a value"; EXTERNAL_URL="$2"; shift 2 ;;
     --password-mode) [[ $# -ge 2 ]] || die "$1 requires a value"; PASSWORD_MODE="$2"; shift 2 ;;
     --autostart) [[ $# -ge 2 ]] || die "$1 requires a value"; AUTOSTART="$2"; shift 2 ;;
     --upgrade) UPGRADE=1; shift ;;
@@ -691,12 +712,16 @@ if port_in_use "$PORT"; then
   fi
 fi
 
+validate_external_url
+
 if [[ "$BIND_ADDRESS" != 127.0.0.1 && "$BIND_ADDRESS" != localhost && "$BIND_ADDRESS" != ::1 ]]; then
   if [[ "$CONTEXT" == hpc-login ]]; then
     warn "non-loopback binding on an HPC login node is usually unsafe and may violate site policy"
   fi
-  if [[ "$ALLOW_PUBLIC_HTTP" -eq 0 ]]; then
-    warn "binding to $BIND_ADDRESS exposes plain HTTP on reachable interfaces; use host firewall/forwarding, VPN, or a TLS reverse proxy"
+  if [[ -z "$EXTERNAL_URL" && "$ALLOW_PUBLIC_HTTP" -eq 0 ]]; then
+    die "non-loopback binding requires --external-url with HTTPS (or localhost through a host-only mapping)"
+  elif [[ -z "$EXTERNAL_URL" ]]; then
+    warn "binding to $BIND_ADDRESS exposes plain HTTP; code-server webviews may not work"
   fi
 fi
 
@@ -713,6 +738,7 @@ log "resolved prefix: $PREFIX"
 log "resolved workspace: $WORKSPACE"
 log "resolved install: source=$INSTALL_SOURCE version=$VERSION upgrade=$UPGRADE"
 log "resolved network: bind=$BIND_ADDRESS port=$PORT"
+log "resolved browser access: ${EXTERNAL_URL:-localhost through an SSH tunnel}"
 log "resolved lifecycle: $AUTOSTART start-now=$START_NOW"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -759,6 +785,9 @@ log "configuration: $PREFIX/etc/code-server/config.yaml"
 log "password: cat $(shell_quote "$PREFIX/etc/code-server/password")"
 log "control: $PREFIX/bin/star-coder-ctl {start|stop|restart|status|logs|run}"
 log "local health: http://$(health_host_for_bind):$PORT/healthz"
+if [[ -n "$EXTERNAL_URL" ]]; then
+  log "browser URL: $EXTERNAL_URL"
+fi
 if [[ "$BIND_ADDRESS" == 127.0.0.1 || "$BIND_ADDRESS" == localhost || "$BIND_ADDRESS" == ::1 ]]; then
   log "SSH tunnel example: ssh -N -L $PORT:127.0.0.1:$PORT user@host"
 fi

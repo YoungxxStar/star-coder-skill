@@ -38,6 +38,13 @@ Diagnose before reinstalling. Preserve `<prefix>/var/log/code-server.log` and th
 - NFS/Lustre/GPFS metadata latency can make extension scanning and file watching expensive. Keep large generated trees out of the workspace and follow site storage guidance.
 - Multiple projects can share one code-server process by using a multi-root `.code-workspace`; separate servers isolate sessions but usually duplicate extension-host memory. User-level extension directories may still be shared if deliberately configured.
 
+## Blank PNG, PDF, Or Webview Preview
+
+- Confirm the browser address starts with trusted `https://`, or with `http://localhost` through an SSH tunnel. A remote `http://IP:PORT` or `http://hostname` URL is not a secure context even when traffic crosses a VPN.
+- Browser webviews depend on service workers. If code and Markdown text load but image/PDF previews stay blank, inspect the browser console for service-worker or secure-context errors before reinstalling extensions.
+- `0.0.0.0` is only a server listen address. Put a trusted TLS reverse proxy or Tailscale Serve HTTPS in front of it and keep the local health check on HTTP.
+- Avoid untrusted self-signed certificates for browser webviews. Use a certificate the browser trusts and preserve WebSocket upgrade, `Host`, and forwarded scheme headers at the proxy.
+
 ## Password And Configuration
 
 - The code-server YAML configuration contains the password and must remain mode `0600`.
